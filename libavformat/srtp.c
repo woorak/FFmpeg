@@ -177,8 +177,31 @@ int ff_srtp_decrypt(struct SRTPContext *s, uint8_t *buf, int *lenptr)
 
     av_hmac_final(s->hmac, hmac, sizeof(hmac));
     if (memcmp(hmac, buf + len - hmac_size, hmac_size)) {
-        av_log(NULL, AV_LOG_WARNING, "HMAC mismatch\n");
-        return AVERROR_INVALIDDATA;
+        int found_roc = 0;
+        uint8_t rocbuf[4];
+          if (rtcp) {
+            av_log(NULL, AV_LOG_WARNING, "HMAC mismatch rtcp\n");
+            return AVERROR_INVALIDDATA;
+        }
+        
+        for (; roc < 100; roc++)
+        {
+            av_hmac_init(s->hmac, s->rtp_auth, sizeof(s->rtp_auth));
+            av_hmac_update(s->hmac, buf, len - hmac_size);
+            AV_WB32(rocbuf, roc);
+            av_hmac_update(s->hmac, rocbuf, 4);
+            av_hmac_final(s->hmac, hmac, sizeof(hmac));
+            if (!memcmp(hmac, buf + len - hmac_size, hmac_size))
+            {
+                found_roc = 1;
+                break;
+            }
+        }
+        if (!found_roc)
+        {
+             av_log(NULL, AV_LOG_WARNING, "HMAC mismatch rtp\n");
+            return AVERROR_INVALIDDATA;
+        }
     }
 
     len -= hmac_size;

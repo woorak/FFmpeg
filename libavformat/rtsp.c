@@ -295,6 +295,11 @@ static int sdp_parse_rtpmap(AVFormatContext *s,
     get_word_sep(buf, sizeof(buf), "/", &p);
     i = atoi(buf);
     switch (par->codec_type) {
+		case AVMEDIA_TYPE_DATA:
+        av_log(s, AV_LOG_DEBUG, "data codec set to: AV_CODEC_ID_TIMED_ID3\n");
+        par->codec_id = AV_CODEC_ID_TIMED_ID3;
+        break;
+
     case AVMEDIA_TYPE_AUDIO:
         av_log(s, AV_LOG_DEBUG, "audio codec set to: %s\n", c_name);
         par->sample_rate = RTSP_DEFAULT_AUDIO_SAMPLERATE;

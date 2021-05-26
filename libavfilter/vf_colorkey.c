@@ -45,7 +45,7 @@ static uint8_t do_colorkey_pixel(ColorkeyContext *ctx, uint8_t r, uint8_t g, uin
     int dg = (int)g - ctx->colorkey_rgba[1];
     int db = (int)b - ctx->colorkey_rgba[2];
 
-    double diff = sqrt((dr * dr + dg * dg + db * db) / (255.0 * 255.0));
+    double diff = sqrt((dr * dr + dg * dg + db * db) / (255.0 * 255.0 * 3.0));
 
     if (ctx->blend > 0.0001) {
         return av_clipd((diff - ctx->similarity) / ctx->blend, 0.0, 1.0) * 255.0;
@@ -212,7 +212,7 @@ static const AVOption colorkey_options[] = {
 
 AVFILTER_DEFINE_CLASS(colorkey);
 
-AVFilter ff_vf_colorkey = {
+const AVFilter ff_vf_colorkey = {
     .name          = "colorkey",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color into transparency. Operates on RGB colors."),
     .priv_size     = sizeof(ColorkeyContext),
@@ -237,7 +237,7 @@ static const AVOption colorhold_options[] = {
 
 AVFILTER_DEFINE_CLASS(colorhold);
 
-AVFilter ff_vf_colorhold = {
+const AVFilter ff_vf_colorhold = {
     .name          = "colorhold",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color range into gray. Operates on RGB colors."),
     .priv_size     = sizeof(ColorkeyContext),

@@ -535,7 +535,7 @@ static int config_output(AVFilterLink *outlink)
     s->delay_frame->nb_samples     = s->delay_samples;
     s->delay_frame->channel_layout = outlink->channel_layout;
 
-    err = av_frame_get_buffer(s->delay_frame, 32);
+    err = av_frame_get_buffer(s->delay_frame, 0);
     if (err)
         return err;
 
@@ -585,7 +585,7 @@ static const AVFilterPad compand_outputs[] = {
 };
 
 
-AVFilter ff_af_compand = {
+const AVFilter ff_af_compand = {
     .name           = "compand",
     .description    = NULL_IF_CONFIG_SMALL(
             "Compress or expand audio dynamic range."),

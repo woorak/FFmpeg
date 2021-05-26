@@ -155,7 +155,7 @@ typedef struct ScaleContext {
 
 } ScaleContext;
 
-AVFilter ff_vf_scale2ref;
+const AVFilter ff_vf_scale2ref;
 
 static int config_props(AVFilterLink *outlink);
 
@@ -358,7 +358,7 @@ static int query_formats(AVFilterContext *ctx)
                 return ret;
             }
         }
-        if ((ret = ff_formats_ref(formats, &ctx->inputs[0]->out_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
     }
     if (ctx->outputs[0]) {
@@ -372,7 +372,7 @@ static int query_formats(AVFilterContext *ctx)
                 return ret;
             }
         }
-        if ((ret = ff_formats_ref(formats, &ctx->outputs[0]->in_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &ctx->outputs[0]->incfg.formats)) < 0)
             return ret;
     }
 
@@ -510,8 +510,7 @@ static int config_props(AVFilterLink *outlink)
 
     scale->input_is_pal = desc->flags & AV_PIX_FMT_FLAG_PAL;
     if (outfmt == AV_PIX_FMT_PAL8) outfmt = AV_PIX_FMT_BGR8;
-    scale->output_is_pal = av_pix_fmt_desc_get(outfmt)->flags & AV_PIX_FMT_FLAG_PAL ||
-                           av_pix_fmt_desc_get(outfmt)->flags & FF_PSEUDOPAL;
+    scale->output_is_pal = av_pix_fmt_desc_get(outfmt)->flags & AV_PIX_FMT_FLAG_PAL;
 
     if (scale->sws)
         sws_freeContext(scale->sws);
@@ -633,10 +632,12 @@ static int scale_slice(AVFilterLink *link, AVFrame *out_buf, AVFrame *cur_pic, s
 
     for (i=0; i<4; i++) {
         int vsub= ((i+1)&2) ? scale->vsub : 0;
+        ptrdiff_t  in_offset = ((y>>vsub)+field) * cur_pic->linesize[i];
+        ptrdiff_t out_offset =            field  * out_buf->linesize[i];
          in_stride[i] = cur_pic->linesize[i] * mul;
         out_stride[i] = out_buf->linesize[i] * mul;
-         in[i] = cur_pic->data[i] + ((y>>vsub)+field) * cur_pic->linesize[i];
-        out[i] = out_buf->data[i] +            field  * out_buf->linesize[i];
+         in[i] = FF_PTR_ADD(cur_pic->data[i],  in_offset);
+        out[i] = FF_PTR_ADD(out_buf->data[i], out_offset);
     }
     if (scale->input_is_pal)
          in[1] = cur_pic->data[1];
@@ -646,8 +647,6 @@ static int scale_slice(AVFilterLink *link, AVFrame *out_buf, AVFrame *cur_pic, s
     return sws_scale(sws, in, in_stride, y/mul, h,
                          out,out_stride);
 }
-
-#define TS2T(ts, tb) ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts) * av_q2d(tb))
 
 static int scale_frame(AVFilterLink *link, AVFrame *in, AVFrame **frame_out)
 {
@@ -882,9 +881,11 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
     return ret;
 }
 
-static const AVClass *child_class_next(const AVClass *prev)
+static const AVClass *child_class_iterate(void **iter)
 {
-    return prev ? NULL : sws_get_class();
+    const AVClass *c = *iter ? NULL : sws_get_class();
+    *iter = (void*)(uintptr_t)c;
+    return c;
 }
 
 #define OFFSET(x) offsetof(ScaleContext, x)
@@ -944,7 +945,7 @@ static const AVClass scale_class = {
     .option           = scale_options,
     .version          = LIBAVUTIL_VERSION_INT,
     .category         = AV_CLASS_CATEGORY_FILTER,
-    .child_class_next = child_class_next,
+    .child_class_iterate = child_class_iterate,
 };
 
 static const AVFilterPad avfilter_vf_scale_inputs[] = {
@@ -965,7 +966,7 @@ static const AVFilterPad avfilter_vf_scale_outputs[] = {
     { NULL }
 };
 
-AVFilter ff_vf_scale = {
+const AVFilter ff_vf_scale = {
     .name            = "scale",
     .description     = NULL_IF_CONFIG_SMALL("Scale the input video size and/or convert the image format."),
     .init_dict       = init_dict,
@@ -984,7 +985,7 @@ static const AVClass scale2ref_class = {
     .option           = scale_options,
     .version          = LIBAVUTIL_VERSION_INT,
     .category         = AV_CLASS_CATEGORY_FILTER,
-    .child_class_next = child_class_next,
+    .child_class_iterate = child_class_iterate,
 };
 
 static const AVFilterPad avfilter_vf_scale2ref_inputs[] = {
@@ -1017,7 +1018,7 @@ static const AVFilterPad avfilter_vf_scale2ref_outputs[] = {
     { NULL }
 };
 
-AVFilter ff_vf_scale2ref = {
+const AVFilter ff_vf_scale2ref = {
     .name            = "scale2ref",
     .description     = NULL_IF_CONFIG_SMALL("Scale the input video size and/or convert the image format to the given reference."),
     .init_dict       = init_dict,

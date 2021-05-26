@@ -25,6 +25,8 @@
  */
 
 #include "libavutil/imgutils.h"
+#include "libavutil/mem_internal.h"
+
 #include "avcodec.h"
 #include "blockdsp.h"
 #define  UNCHECKED_BITSTREAM_READER 1
@@ -111,18 +113,19 @@ static av_cold int dnxhd_decode_init(AVCodecContext *avctx)
 static int dnxhd_init_vlc(DNXHDContext *ctx, uint32_t cid, int bitdepth)
 {
     if (cid != ctx->cid) {
-        int index;
+        const CIDEntry *cid_table = ff_dnxhd_get_cid_table(cid);
 
-        if ((index = ff_dnxhd_get_cid_table(cid)) < 0) {
+        if (!cid_table) {
             av_log(ctx->avctx, AV_LOG_ERROR, "unsupported cid %"PRIu32"\n", cid);
             return AVERROR(ENOSYS);
         }
-        if (ff_dnxhd_cid_table[index].bit_depth != bitdepth &&
-            ff_dnxhd_cid_table[index].bit_depth != DNXHD_VARIABLE) {
-            av_log(ctx->avctx, AV_LOG_ERROR, "bit depth mismatches %d %d\n", ff_dnxhd_cid_table[index].bit_depth, bitdepth);
+        if (cid_table->bit_depth != bitdepth &&
+            cid_table->bit_depth != DNXHD_VARIABLE) {
+            av_log(ctx->avctx, AV_LOG_ERROR, "bit depth mismatches %d %d\n",
+                   cid_table->bit_depth, bitdepth);
             return AVERROR_INVALIDDATA;
         }
-        ctx->cid_table = &ff_dnxhd_cid_table[index];
+        ctx->cid_table = cid_table;
         av_log(ctx->avctx, AV_LOG_VERBOSE, "Profile cid %"PRIu32".\n", cid);
 
         ff_free_vlc(&ctx->ac_vlc);
@@ -141,21 +144,6 @@ static int dnxhd_init_vlc(DNXHDContext *ctx, uint32_t cid, int bitdepth)
 
         ctx->cid = cid;
     }
-    return 0;
-}
-
-static av_cold int dnxhd_decode_init_thread_copy(AVCodecContext *avctx)
-{
-    DNXHDContext *ctx = avctx->priv_data;
-
-    ctx->avctx = avctx;
-    // make sure VLC tables will be loaded when cid is parsed
-    ctx->cid = -1;
-
-    ctx->rows = av_mallocz_array(avctx->thread_count, sizeof(RowContext));
-    if (!ctx->rows)
-        return AVERROR(ENOMEM);
-
     return 0;
 }
 
@@ -729,7 +717,7 @@ static av_cold int dnxhd_decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_dnxhd_decoder = {
+const AVCodec ff_dnxhd_decoder = {
     .name           = "dnxhd",
     .long_name      = NULL_IF_CONFIG_SMALL("VC3/DNxHD"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -740,6 +728,6 @@ AVCodec ff_dnxhd_decoder = {
     .decode         = dnxhd_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
                       AV_CODEC_CAP_SLICE_THREADS,
-    .init_thread_copy = ONLY_IF_THREADS_ENABLED(dnxhd_decode_init_thread_copy),
     .profiles       = NULL_IF_CONFIG_SMALL(ff_dnxhd_profiles),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

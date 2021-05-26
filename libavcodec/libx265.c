@@ -32,7 +32,9 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
+#include "packet_internal.h"
 
 typedef struct libx265Context {
     const AVClass *class;
@@ -309,8 +311,8 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
     if (!cpb_props)
         return AVERROR(ENOMEM);
     cpb_props->buffer_size = ctx->params->rc.vbvBufferSize * 1000;
-    cpb_props->max_bitrate = ctx->params->rc.vbvMaxBitrate * 1000;
-    cpb_props->avg_bitrate = ctx->params->rc.bitrate       * 1000;
+    cpb_props->max_bitrate = ctx->params->rc.vbvMaxBitrate * 1000LL;
+    cpb_props->avg_bitrate = ctx->params->rc.bitrate       * 1000LL;
 
     if (!(avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER))
         ctx->params->bRepeatHeaders = 1;
@@ -504,6 +506,16 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         ret = libx265_encode_set_roi(ctx, pic, &x265pic);
         if (ret < 0)
             return ret;
+
+        if (pic->reordered_opaque) {
+            x265pic.userData = av_malloc(sizeof(pic->reordered_opaque));
+            if (!x265pic.userData) {
+                av_freep(&x265pic.quantOffsets);
+                return AVERROR(ENOMEM);
+            }
+
+            memcpy(x265pic.userData, &pic->reordered_opaque, sizeof(pic->reordered_opaque));
+        }
     }
 
     ret = ctx->api->encoder_encode(ctx->encoder, &nal, &nnal,
@@ -520,7 +532,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     for (i = 0; i < nnal; i++)
         payload += nal[i].sizeBytes;
 
-    ret = ff_alloc_packet2(avctx, pkt, payload, payload);
+    ret = ff_get_encode_buffer(avctx, pkt, payload, 0);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error getting output packet.\n");
         return ret;
@@ -550,13 +562,10 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     case X265_TYPE_BREF:
         pict_type = AV_PICTURE_TYPE_B;
         break;
+    default:
+        av_log(avctx, AV_LOG_ERROR, "Unknown picture type encountered.\n");
+        return AVERROR_EXTERNAL;
     }
-
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = pict_type;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
 #if X265_BUILD >= 130
     if (x265pic_out.sliceType == X265_TYPE_B)
@@ -566,6 +575,12 @@ FF_ENABLE_DEPRECATION_WARNINGS
         pkt->flags |= AV_PKT_FLAG_DISPOSABLE;
 
     ff_side_data_set_encoder_stats(pkt, x265pic_out.frameData.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
+
+    if (x265pic_out.userData) {
+        memcpy(&avctx->reordered_opaque, x265pic_out.userData, sizeof(avctx->reordered_opaque));
+        av_freep(&x265pic_out.userData);
+    } else
+        avctx->reordered_opaque = 0;
 
     *got_packet = 1;
     return 0;
@@ -673,6 +688,9 @@ AVCodec ff_libx265_encoder = {
     .long_name        = NULL_IF_CONFIG_SMALL("libx265 H.265 / HEVC"),
     .type             = AVMEDIA_TYPE_VIDEO,
     .id               = AV_CODEC_ID_HEVC,
+    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                        AV_CODEC_CAP_OTHER_THREADS |
+                        AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init             = libx265_encode_init,
     .init_static_data = libx265_encode_init_csp,
     .encode2          = libx265_encode_frame,
@@ -680,6 +698,6 @@ AVCodec ff_libx265_encoder = {
     .priv_data_size   = sizeof(libx265Context),
     .priv_class       = &class,
     .defaults         = x265_defaults,
-    .capabilities     = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AUTO_THREADS,
+    .caps_internal    = FF_CODEC_CAP_AUTO_THREADS,
     .wrapper_name     = "libx265",
 };

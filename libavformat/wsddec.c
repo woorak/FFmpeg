@@ -120,7 +120,7 @@ static int wsd_read_header(AVFormatContext *s)
     }
 
     avio_skip(pb, 4);
-    av_timecode_make_smpte_tc_string(playback_time, avio_rb32(pb), 0);
+    av_timecode_make_smpte_tc_string2(playback_time, (AVRational){1,1}, avio_rb32(pb) & 0x00ffffffU, 1, 1);
     av_dict_set(&s->metadata, "playback_time", playback_time, 0);
 
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
@@ -162,7 +162,7 @@ static int wsd_read_header(AVFormatContext *s)
 }
 
 FF_RAW_DEMUXER_CLASS(wsd)
-AVInputFormat ff_wsd_demuxer = {
+const AVInputFormat ff_wsd_demuxer = {
     .name         = "wsd",
     .long_name    = NULL_IF_CONFIG_SMALL("Wideband Single-bit Data (WSD)"),
     .read_probe   = wsd_probe,

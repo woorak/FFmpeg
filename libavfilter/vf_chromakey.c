@@ -56,7 +56,7 @@ static uint8_t do_chromakey_pixel(ChromakeyContext *ctx, uint8_t u[9], uint8_t v
         du = (int)u[i] - ctx->chromakey_uv[0];
         dv = (int)v[i] - ctx->chromakey_uv[1];
 
-        diff += sqrt((du * du + dv * dv) / (255.0 * 255.0));
+        diff += sqrt((du * du + dv * dv) / (255.0 * 255.0 * 2));
     }
 
     diff /= 9.0;
@@ -78,7 +78,7 @@ static uint16_t do_chromakey_pixel16(ChromakeyContext *ctx, uint16_t u[9], uint1
         du = (int)u[i] - ctx->chromakey_uv[0];
         dv = (int)v[i] - ctx->chromakey_uv[1];
 
-        diff += sqrt((du * du + dv * dv) / (max * max));
+        diff += sqrt((du * du + dv * dv) / (max * max * 2));
     }
 
     diff /= 9.0;
@@ -398,7 +398,7 @@ static const AVOption chromakey_options[] = {
 
 AVFILTER_DEFINE_CLASS(chromakey);
 
-AVFilter ff_vf_chromakey = {
+const AVFilter ff_vf_chromakey = {
     .name          = "chromakey",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color into transparency. Operates on YUV colors."),
     .priv_size     = sizeof(ChromakeyContext),
@@ -440,7 +440,7 @@ static const AVFilterPad chromahold_outputs[] = {
 
 AVFILTER_DEFINE_CLASS(chromahold);
 
-AVFilter ff_vf_chromahold = {
+const AVFilter ff_vf_chromahold = {
     .name          = "chromahold",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color range into gray."),
     .priv_size     = sizeof(ChromakeyContext),

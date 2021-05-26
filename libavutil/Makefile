@@ -21,8 +21,10 @@ HEADERS = adler32.h                                                     \
           cpu.h                                                         \
           crc.h                                                         \
           des.h                                                         \
+          detection_bbox.h                                              \
           dict.h                                                        \
           display.h                                                     \
+          dovi_meta.h                                                   \
           downmix_info.h                                                \
           encryption_info.h                                             \
           error.h                                                       \
@@ -79,9 +81,11 @@ HEADERS = adler32.h                                                     \
           tree.h                                                        \
           twofish.h                                                     \
           version.h                                                     \
+          video_enc_params.h                                            \
           xtea.h                                                        \
           tea.h                                                         \
           tx.h                                                          \
+          film_grain_params.h                                           \
 
 HEADERS-$(CONFIG_LZO)                   += lzo.h
 
@@ -110,8 +114,10 @@ OBJS = adler32.o                                                        \
        cpu.o                                                            \
        crc.o                                                            \
        des.o                                                            \
+       detection_bbox.o                                                 \
        dict.o                                                           \
        display.o                                                        \
+       dovi_meta.o                                                      \
        downmix_info.o                                                   \
        encryption_info.o                                                \
        error.o                                                          \
@@ -165,7 +171,10 @@ OBJS = adler32.o                                                        \
        tx.o                                                             \
        tx_float.o                                                       \
        tx_double.o                                                      \
-       tx_int32.o
+       tx_int32.o                                                       \
+       video_enc_params.o                                               \
+       film_grain_params.o                                              \
+
 
 OBJS-$(CONFIG_CUDA)                     += hwcontext_cuda.o
 OBJS-$(CONFIG_D3D11VA)                  += hwcontext_d3d11va.o

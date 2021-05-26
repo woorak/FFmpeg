@@ -330,8 +330,9 @@ static int deshake_transform_c(AVFilterContext *ctx,
 
     for (i = 0; i < 3; i++) {
         // Transform the luma and chroma planes
-        ret = avfilter_transform(in->data[i], out->data[i], in->linesize[i], out->linesize[i],
-                                 plane_w[i], plane_h[i], matrixs[i], interpolate, fill);
+        ret = ff_affine_transform(in->data[i], out->data[i], in->linesize[i],
+                                  out->linesize[i], plane_w[i], plane_h[i],
+                                  matrixs[i], interpolate, fill);
         if (ret < 0)
             return ret;
     }
@@ -354,7 +355,7 @@ static av_cold int init(AVFilterContext *ctx)
     if (deshake->filename)
         deshake->fp = fopen(deshake->filename, "w");
     if (deshake->fp)
-        fwrite("Ori x, Avg x, Fin x, Ori y, Avg y, Fin y, Ori angle, Avg angle, Fin angle, Ori zoom, Avg zoom, Fin zoom\n", sizeof(char), 104, deshake->fp);
+        fwrite("Ori x, Avg x, Fin x, Ori y, Avg y, Fin y, Ori angle, Avg angle, Fin angle, Ori zoom, Avg zoom, Fin zoom\n", 1, 104, deshake->fp);
 
     // Quadword align left edge of box for MMX code, adjust width if necessary
     // to keep right margin
@@ -485,7 +486,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     // Write statistics to file
     if (deshake->fp) {
         snprintf(tmp, 256, "%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n", orig.vec.x, deshake->avg.vec.x, t.vec.x, orig.vec.y, deshake->avg.vec.y, t.vec.y, orig.angle, deshake->avg.angle, t.angle, orig.zoom, deshake->avg.zoom, t.zoom);
-        fwrite(tmp, sizeof(char), strlen(tmp), deshake->fp);
+        fwrite(tmp, 1, strlen(tmp), deshake->fp);
     }
 
     // Turn relative current frame motion into absolute by adding it to the
@@ -550,7 +551,7 @@ static const AVFilterPad deshake_outputs[] = {
     { NULL }
 };
 
-AVFilter ff_vf_deshake = {
+const AVFilter ff_vf_deshake = {
     .name          = "deshake",
     .description   = NULL_IF_CONFIG_SMALL("Stabilize shaky video."),
     .priv_size     = sizeof(DeshakeContext),

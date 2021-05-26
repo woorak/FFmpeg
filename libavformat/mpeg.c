@@ -99,7 +99,7 @@ static int mpegps_probe(const AVProbeData *p)
 
     if (sys > invalid && sys * 9 <= pspack * 10)
         return (audio > 12 || vid > 3 || pspack > 2) ? AVPROBE_SCORE_EXTENSION + 2
-                                                     : AVPROBE_SCORE_EXTENSION / 2 + 1; // 1 more than mp3
+                                                     : AVPROBE_SCORE_EXTENSION / 2 + (audio + vid + pspack > 1); // 1 more than mp3
     if (pspack > invalid && (priv1 + vid + audio) * 10 >= pspack * 9)
         return pspack > 2 ? AVPROBE_SCORE_EXTENSION + 2
                           : AVPROBE_SCORE_EXTENSION / 2; // 1 more than .mpg
@@ -147,9 +147,12 @@ static int mpegps_read_header(AVFormatContext *s)
 static int64_t get_pts(AVIOContext *pb, int c)
 {
     uint8_t buf[5];
+    int ret;
 
     buf[0] = c < 0 ? avio_r8(pb) : c;
-    avio_read(pb, buf + 1, 4);
+    ret = avio_read(pb, buf + 1, 4);
+    if (ret < 4)
+        return AV_NOPTS_VALUE;
 
     return ff_parse_pes_pts(buf);
 }
@@ -619,8 +622,8 @@ skip:
         st->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
         st->codecpar->sample_rate = 8000;
     }
-    st->request_probe     = request_probe;
-    st->need_parsing      = AVSTREAM_PARSE_FULL;
+    st->internal->request_probe     = request_probe;
+    st->internal->need_parsing      = AVSTREAM_PARSE_FULL;
 
 found:
     if (st->discard >= AVDISCARD_ALL)
@@ -678,7 +681,7 @@ static int64_t mpegps_read_dts(AVFormatContext *s, int stream_index,
     return dts;
 }
 
-AVInputFormat ff_mpegps_demuxer = {
+const AVInputFormat ff_mpegps_demuxer = {
     .name           = "mpeg",
     .long_name      = NULL_IF_CONFIG_SMALL("MPEG-PS (MPEG-2 Program Stream)"),
     .priv_data_size = sizeof(MpegDemuxContext),
@@ -729,6 +732,7 @@ static int vobsub_read_header(AVFormatContext *s)
 {
     int i, ret = 0, header_parsed = 0, langidx = 0;
     VobSubDemuxContext *vobsub = s->priv_data;
+    const AVInputFormat *iformat;
     size_t fname_len;
     AVBPrint header;
     int64_t delay = 0;
@@ -736,7 +740,6 @@ static int vobsub_read_header(AVFormatContext *s)
     int stream_id = -1;
     char id[64] = {0};
     char alt[MAX_LINE_SIZE] = {0};
-    ff_const59 AVInputFormat *iformat;
 
     if (!vobsub->sub_name) {
         char *ext;
@@ -927,7 +930,11 @@ static int vobsub_read_packet(AVFormatContext *s, AVPacket *pkt)
         FFDemuxSubtitlesQueue *tmpq = &vobsub->q[i];
         int64_t ts;
         av_assert0(tmpq->nb_subs);
-        ts = tmpq->subs[tmpq->current_sub_idx].pts;
+
+        if (tmpq->current_sub_idx >= tmpq->nb_subs)
+            continue;
+
+        ts = tmpq->subs[tmpq->current_sub_idx]->pts;
         if (ts < min_ts) {
             min_ts = ts;
             sid = i;
@@ -943,7 +950,7 @@ static int vobsub_read_packet(AVFormatContext *s, AVPacket *pkt)
     /* compute maximum packet size using the next packet position. This is
      * useful when the len in the header is non-sense */
     if (q->current_sub_idx < q->nb_subs) {
-        psize = q->subs[q->current_sub_idx].pos - pkt->pos;
+        psize = q->subs[q->current_sub_idx]->pos - pkt->pos;
     } else {
         int64_t fsize = avio_size(pb);
         psize = fsize < 0 ? 0xffff : fsize - pkt->pos;
@@ -961,7 +968,7 @@ static int vobsub_read_packet(AVFormatContext *s, AVPacket *pkt)
         if (ret < 0) {
             if (pkt->size) // raise packet even if incomplete
                 break;
-            goto fail;
+            return ret;
         }
         to_read = ret & 0xffff;
         new_pos = avio_tell(pb);
@@ -978,7 +985,7 @@ static int vobsub_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         ret = av_grow_packet(pkt, to_read);
         if (ret < 0)
-            goto fail;
+            return ret;
 
         n = avio_read(pb, pkt->data + (pkt->size - to_read), to_read);
         if (n < to_read)
@@ -986,10 +993,6 @@ static int vobsub_read_packet(AVFormatContext *s, AVPacket *pkt)
     } while (total_read < psize);
 
     return 0;
-
-fail:
-    av_packet_unref(pkt);
-    return ret;
 }
 
 static int vobsub_read_seek(AVFormatContext *s, int stream_index,
@@ -1037,7 +1040,7 @@ static const AVClass vobsub_demuxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_vobsub_demuxer = {
+const AVInputFormat ff_vobsub_demuxer = {
     .name           = "vobsub",
     .long_name      = NULL_IF_CONFIG_SMALL("VobSub subtitle format"),
     .priv_data_size = sizeof(VobSubDemuxContext),

@@ -325,9 +325,6 @@ static double get_concatdec_select(AVFrame *frame, int64_t pts)
     return NAN;
 }
 
-#define D2TS(d)  (isnan(d) ? AV_NOPTS_VALUE : (int64_t)(d))
-#define TS2D(ts) ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts))
-
 static void select_frame(AVFilterContext *ctx, AVFrame *frame)
 {
     SelectContext *select = ctx->priv;
@@ -479,7 +476,7 @@ static const AVFilterPad avfilter_af_aselect_inputs[] = {
     { NULL }
 };
 
-AVFilter ff_af_aselect = {
+const AVFilter ff_af_aselect = {
     .name        = "aselect",
     .description = NULL_IF_CONFIG_SMALL("Select audio frames to pass in output."),
     .init        = aselect_init,
@@ -543,7 +540,7 @@ static const AVFilterPad avfilter_vf_select_inputs[] = {
     { NULL }
 };
 
-AVFilter ff_vf_select = {
+const AVFilter ff_vf_select = {
     .name          = "select",
     .description   = NULL_IF_CONFIG_SMALL("Select video frames to pass in output."),
     .init          = select_init,

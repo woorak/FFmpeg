@@ -25,6 +25,7 @@
 #include "avcodec.h"
 #include "audio_frame_queue.h"
 #include "internal.h"
+#include "profiles.h"
 
 #ifdef AACENCODER_LIB_VL0
 #define FDKENC_VER_AT_LEAST(vl0, vl1) \
@@ -62,6 +63,7 @@ static const AVOption aac_enc_options[] = {
     { "latm", "Output LATM/LOAS encapsulated data", offsetof(AACContext, latm), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
     { "header_period", "StreamMuxConfig and PCE repetition period (in frames)", offsetof(AACContext, header_period), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 0xffff, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
     { "vbr", "VBR mode (1-5)", offsetof(AACContext, vbr), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 5, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    FF_AAC_PROFILE_OPTS
     { NULL }
 };
 
@@ -110,7 +112,6 @@ static int aac_encode_close(AVCodecContext *avctx)
 
     if (s->handle)
         aacEncClose(&s->handle);
-    av_freep(&avctx->extradata);
     ff_af_queue_close(&s->afq);
 
     return 0;
@@ -456,7 +457,7 @@ static const int aac_sample_rates[] = {
     24000, 22050, 16000, 12000, 11025, 8000, 0
 };
 
-AVCodec ff_libfdk_aac_encoder = {
+const AVCodec ff_libfdk_aac_encoder = {
     .name                  = "libfdk_aac",
     .long_name             = NULL_IF_CONFIG_SMALL("Fraunhofer FDK AAC"),
     .type                  = AVMEDIA_TYPE_AUDIO,

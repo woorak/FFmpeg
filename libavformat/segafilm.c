@@ -40,8 +40,8 @@
 
 typedef struct film_sample {
   int stream;
-  int64_t sample_offset;
   unsigned int sample_size;
+  int64_t sample_offset;
   int64_t pts;
   int keyframe;
 } film_sample;
@@ -144,8 +144,11 @@ static int film_read_header(AVFormatContext *s)
         film->video_type = AV_CODEC_ID_NONE;
     }
 
+    if (film->video_type == AV_CODEC_ID_NONE && film->audio_type == AV_CODEC_ID_NONE)
+        return AVERROR_INVALIDDATA;
+
     /* initialize the decoder streams */
-    if (film->video_type) {
+    if (film->video_type != AV_CODEC_ID_NONE) {
         st = avformat_new_stream(s, NULL);
         if (!st)
             return AVERROR(ENOMEM);
@@ -166,7 +169,7 @@ static int film_read_header(AVFormatContext *s)
         }
     }
 
-    if (film->audio_type) {
+    if (film->audio_type != AV_CODEC_ID_NONE) {
         st = avformat_new_stream(s, NULL);
         if (!st)
             return AVERROR(ENOMEM);
@@ -180,7 +183,7 @@ static int film_read_header(AVFormatContext *s)
         if (film->audio_type == AV_CODEC_ID_ADPCM_ADX) {
             st->codecpar->bits_per_coded_sample = 18 * 8 / 32;
             st->codecpar->block_align = st->codecpar->channels * 18;
-            st->need_parsing = AVSTREAM_PARSE_FULL;
+            st->internal->need_parsing = AVSTREAM_PARSE_FULL;
         } else {
             st->codecpar->bits_per_coded_sample = film->audio_bits;
             st->codecpar->block_align = st->codecpar->channels *
@@ -198,8 +201,6 @@ static int film_read_header(AVFormatContext *s)
         return AVERROR_INVALIDDATA;
     film->base_clock = AV_RB32(&scratch[8]);
     film->sample_count = AV_RB32(&scratch[12]);
-    if(film->sample_count >= UINT_MAX / sizeof(film_sample))
-        return -1;
     film->sample_table = av_malloc_array(film->sample_count, sizeof(film_sample));
     if (!film->sample_table)
         return AVERROR(ENOMEM);
@@ -241,7 +242,7 @@ static int film_read_header(AVFormatContext *s)
             film->sample_table[i].pts = AV_RB32(&scratch[8]) & 0x7FFFFFFF;
             film->sample_table[i].keyframe = (scratch[8] & 0x80) ? 0 : AVINDEX_KEYFRAME;
             video_frame_counter++;
-            if (film->video_type)
+            if (film->video_type != AV_CODEC_ID_NONE)
                 av_add_index_entry(s->streams[film->video_stream_index],
                                    film->sample_table[i].sample_offset,
                                    film->sample_table[i].pts,
@@ -250,10 +251,10 @@ static int film_read_header(AVFormatContext *s)
         }
     }
 
-    if (film->audio_type)
+    if (film->audio_type != AV_CODEC_ID_NONE)
         s->streams[film->audio_stream_index]->duration = audio_frame_counter;
 
-    if (film->video_type)
+    if (film->video_type != AV_CODEC_ID_NONE)
         s->streams[film->video_stream_index]->duration = video_frame_counter;
 
     film->current_sample = 0;
@@ -321,7 +322,7 @@ static int film_read_seek(AVFormatContext *s, int stream_index, int64_t timestam
     if (ret < 0)
         return ret;
 
-    pos = avio_seek(s->pb, st->index_entries[ret].pos, SEEK_SET);
+    pos = avio_seek(s->pb, st->internal->index_entries[ret].pos, SEEK_SET);
     if (pos < 0)
         return pos;
 
@@ -330,7 +331,7 @@ static int film_read_seek(AVFormatContext *s, int stream_index, int64_t timestam
     return 0;
 }
 
-AVInputFormat ff_segafilm_demuxer = {
+const AVInputFormat ff_segafilm_demuxer = {
     .name           = "film_cpk",
     .long_name      = NULL_IF_CONFIG_SMALL("Sega FILM / CPK"),
     .priv_data_size = sizeof(FilmDemuxContext),

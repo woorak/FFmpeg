@@ -20,7 +20,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
+#include "libavutil/mem_internal.h"
+
 #include "libavcodec/vc1dsp.h"
 #include "constants.h"
 #include "vc1dsp_mips.h"

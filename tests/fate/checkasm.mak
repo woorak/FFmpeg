@@ -2,6 +2,7 @@ FATE_CHECKASM = fate-checkasm-aacpsdsp                                  \
                 fate-checkasm-af_afir                                   \
                 fate-checkasm-alacdsp                                   \
                 fate-checkasm-audiodsp                                  \
+                fate-checkasm-av_tx                                     \
                 fate-checkasm-blockdsp                                  \
                 fate-checkasm-bswapdsp                                  \
                 fate-checkasm-exrdsp                                    \
@@ -24,6 +25,7 @@ FATE_CHECKASM = fate-checkasm-aacpsdsp                                  \
                 fate-checkasm-sbrdsp                                    \
                 fate-checkasm-synth_filter                              \
                 fate-checkasm-sw_rgb                                    \
+                fate-checkasm-sw_scale                                  \
                 fate-checkasm-v210dec                                   \
                 fate-checkasm-v210enc                                   \
                 fate-checkasm-vf_blend                                  \

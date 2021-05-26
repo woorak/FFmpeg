@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/random_seed.h"
 #include "libavutil/opt.h"
 #include "vulkan.h"
 #include "scale_eval.h"
@@ -52,9 +53,11 @@ typedef struct ScaleVulkanContext {
 } ScaleVulkanContext;
 
 static const char scale_bilinear[] = {
-    C(0, vec4 scale_bilinear(int idx, ivec2 pos)                                )
+    C(0, vec4 scale_bilinear(int idx, ivec2 pos, vec2 crop_range, vec2 crop_off))
     C(0, {                                                                      )
-    C(1,     const vec2 npos = (vec2(pos) + 0.5f) / imageSize(output_img[idx]); )
+    C(1,     vec2 npos = (vec2(pos) + 0.5f) / imageSize(output_img[idx]);       )
+    C(1,     npos *= crop_range;    /* Reduce the range */                      )
+    C(1,     npos += crop_off;      /* Offset the start */                      )
     C(1,     return texture(input_img[idx], npos);                              )
     C(0, }                                                                      )
 };
@@ -107,6 +110,15 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
     VkSampler *sampler;
     VkFilter sampler_mode;
     ScaleVulkanContext *s = ctx->priv;
+
+    int crop_x = in->crop_left;
+    int crop_y = in->crop_top;
+    int crop_w = in->width - (in->crop_left + in->crop_right);
+    int crop_h = in->height - (in->crop_top + in->crop_bottom);
+
+    s->vkctx.queue_family_idx = s->vkctx.hwctx->queue_family_comp_index;
+    s->vkctx.queue_count = GET_QUEUE_COUNT(s->vkctx.hwctx, 0, 1, 0);
+    s->vkctx.cur_queue_idx = av_get_random_seed() % s->vkctx.queue_count;
 
     switch (s->scaler) {
     case F_NEAREST:
@@ -186,6 +198,9 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
         GLSLC(0, {                                                               );
         GLSLC(1,     ivec2 size;                                                 );
         GLSLC(1,     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);                );
+        GLSLF(1,     vec2 in_d = vec2(%i, %i);             ,in->width, in->height);
+        GLSLF(1,     vec2 c_r = vec2(%i, %i) / in_d;              ,crop_w, crop_h);
+        GLSLF(1,     vec2 c_o = vec2(%i, %i) / in_d;               ,crop_x,crop_y);
         GLSLC(0,                                                                 );
 
         if (s->vkctx.output_format == s->vkctx.input_format) {
@@ -195,14 +210,14 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
                 switch (s->scaler) {
                 case F_NEAREST:
                 case F_BILINEAR:
-                    GLSLF(2, vec4 res = scale_bilinear(%i, pos);               ,i);
+                    GLSLF(2, vec4 res = scale_bilinear(%i, pos, c_r, c_o);     ,i);
                     GLSLF(2, imageStore(output_img[%i], pos, res);             ,i);
                     break;
                 };
                 GLSLC(1, }                                                       );
             }
         } else {
-            GLSLC(1, vec4 res = scale_bilinear(0, pos);                          );
+            GLSLC(1, vec4 res = scale_bilinear(0, pos, c_r, c_o);                );
             GLSLF(1, res = rgb2yuv(res, %i);    ,s->out_range == AVCOL_RANGE_JPEG);
             switch (s->vkctx.output_format) {
             case AV_PIX_FMT_NV12:    GLSLC(1, write_nv12(res, pos); ); break;
@@ -251,7 +266,7 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
 
         for (int y = 0; y < 3; y++)
             for (int x = 0; x < 3; x++)
-                par->yuv_matrix[x][y] = tmp_mat[y][x];
+                par->yuv_matrix[x][y] = tmp_mat[x][y];
 
         par->yuv_matrix[3][3] = 1.0;
 
@@ -266,8 +281,7 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
     }
 
     /* Execution context */
-    RET(ff_vk_create_exec_ctx(ctx, &s->exec,
-                              s->vkctx.hwctx->queue_family_comp_index));
+    RET(ff_vk_create_exec_ctx(ctx, &s->exec));
 
     s->initialized = 1;
 
@@ -280,14 +294,20 @@ fail:
 static int process_frames(AVFilterContext *avctx, AVFrame *out_f, AVFrame *in_f)
 {
     int err = 0;
+    VkCommandBuffer cmd_buf;
     ScaleVulkanContext *s = avctx->priv;
     AVVkFrame *in = (AVVkFrame *)in_f->data[0];
     AVVkFrame *out = (AVVkFrame *)out_f->data[0];
     VkImageMemoryBarrier barriers[AV_NUM_DATA_POINTERS*2];
     int barrier_count = 0;
 
+    /* Update descriptors and init the exec context */
+    ff_vk_start_exec_recording(avctx, s->exec);
+    cmd_buf = ff_vk_get_exec_buf(avctx, s->exec);
+
     for (int i = 0; i < av_pix_fmt_count_planes(s->vkctx.input_format); i++) {
-        RET(ff_vk_create_imageview(avctx, &s->input_images[i].imageView, in->img[i],
+        RET(ff_vk_create_imageview(avctx, s->exec, &s->input_images[i].imageView,
+                                   in->img[i],
                                    av_vkfmt_from_pixfmt(s->vkctx.input_format)[i],
                                    ff_comp_identity_map));
 
@@ -295,7 +315,8 @@ static int process_frames(AVFilterContext *avctx, AVFrame *out_f, AVFrame *in_f)
     }
 
     for (int i = 0; i < av_pix_fmt_count_planes(s->vkctx.output_format); i++) {
-        RET(ff_vk_create_imageview(avctx, &s->output_images[i].imageView, out->img[i],
+        RET(ff_vk_create_imageview(avctx, s->exec, &s->output_images[i].imageView,
+                                   out->img[i],
                                    av_vkfmt_from_pixfmt(s->vkctx.output_format)[i],
                                    ff_comp_identity_map));
 
@@ -303,8 +324,6 @@ static int process_frames(AVFilterContext *avctx, AVFrame *out_f, AVFrame *in_f)
     }
 
     ff_vk_update_descriptor_set(avctx, s->pl, 0);
-
-    ff_vk_start_exec_recording(avctx, s->exec);
 
     for (int i = 0; i < av_pix_fmt_count_planes(s->vkctx.input_format); i++) {
         VkImageMemoryBarrier bar = {
@@ -348,13 +367,13 @@ static int process_frames(AVFilterContext *avctx, AVFrame *out_f, AVFrame *in_f)
         out->access[i] = bar.dstAccessMask;
     }
 
-    vkCmdPipelineBarrier(s->exec->buf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    vkCmdPipelineBarrier(cmd_buf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
                          0, NULL, 0, NULL, barrier_count, barriers);
 
     ff_vk_bind_pipeline_exec(avctx, s->exec, s->pl);
 
-    vkCmdDispatch(s->exec->buf,
+    vkCmdDispatch(cmd_buf,
                   FFALIGN(s->vkctx.output_width,  CGROUPS[0])/CGROUPS[0],
                   FFALIGN(s->vkctx.output_height, CGROUPS[1])/CGROUPS[1], 1);
 
@@ -365,12 +384,10 @@ static int process_frames(AVFilterContext *avctx, AVFrame *out_f, AVFrame *in_f)
     if (err)
         return err;
 
-    for (int i = 0; i < av_pix_fmt_count_planes(s->vkctx.input_format); i++)
-        ff_vk_destroy_imageview(avctx, &s->input_images[i].imageView);
-    for (int i = 0; i < av_pix_fmt_count_planes(s->vkctx.output_format); i++)
-        ff_vk_destroy_imageview(avctx, &s->output_images[i].imageView);
+    return err;
 
 fail:
+    ff_vk_discard_exec_deps(avctx, s->exec);
     return err;
 }
 
@@ -454,11 +471,6 @@ static int scale_vulkan_config_output(AVFilterLink *outlink)
     if (err < 0)
         return err;
 
-    if (inlink->sample_aspect_ratio.num)
-        outlink->sample_aspect_ratio = av_mul_q((AVRational){outlink->h * inlink->w, outlink->w * inlink->h}, inlink->sample_aspect_ratio);
-    else
-        outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
-
     return 0;
 }
 
@@ -512,7 +524,7 @@ static const AVFilterPad scale_vulkan_outputs[] = {
     { NULL }
 };
 
-AVFilter ff_vf_scale_vulkan = {
+const AVFilter ff_vf_scale_vulkan = {
     .name           = "scale_vulkan",
     .description    = NULL_IF_CONFIG_SMALL("Scale Vulkan frames"),
     .priv_size      = sizeof(ScaleVulkanContext),

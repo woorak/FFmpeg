@@ -29,6 +29,7 @@ Only mono files are supported.
 #include "libavutil/channel_layout.h"
 #include "avformat.h"
 #include "internal.h"
+#include "rawenc.h"
 
 typedef struct {
     uint64_t cumulated_size;
@@ -62,12 +63,6 @@ static int amr_write_header(AVFormatContext *s)
     }
     return 0;
 }
-
-static int amr_write_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    avio_write(s->pb, pkt->data, pkt->size);
-    return 0;
-}
 #endif /* CONFIG_AMR_MUXER */
 
 static int amr_probe(const AVProbeData *p)
@@ -89,13 +84,15 @@ static int amr_read_header(AVFormatContext *s)
     AVStream *st;
     uint8_t header[9];
 
-    avio_read(pb, header, 6);
+    if (avio_read(pb, header, 6) != 6)
+        return AVERROR_INVALIDDATA;
 
     st = avformat_new_stream(s, NULL);
     if (!st)
         return AVERROR(ENOMEM);
     if (memcmp(header, AMR_header, 6)) {
-        avio_read(pb, header + 6, 3);
+        if (avio_read(pb, header + 6, 3) != 3)
+            return AVERROR_INVALIDDATA;
         if (memcmp(header, AMRWB_header, 9)) {
             return -1;
         }
@@ -162,7 +159,7 @@ static int amr_read_packet(AVFormatContext *s, AVPacket *pkt)
 }
 
 #if CONFIG_AMR_DEMUXER
-AVInputFormat ff_amr_demuxer = {
+const AVInputFormat ff_amr_demuxer = {
     .name           = "amr",
     .long_name      = NULL_IF_CONFIG_SMALL("3GPP AMR"),
     .priv_data_size = sizeof(AMRContext),
@@ -218,7 +215,7 @@ static int amrnb_read_header(AVFormatContext *s)
     return 0;
 }
 
-AVInputFormat ff_amrnb_demuxer = {
+const AVInputFormat ff_amrnb_demuxer = {
     .name           = "amrnb",
     .long_name      = NULL_IF_CONFIG_SMALL("raw AMR-NB"),
     .priv_data_size = sizeof(AMRContext),
@@ -274,7 +271,7 @@ static int amrwb_read_header(AVFormatContext *s)
     return 0;
 }
 
-AVInputFormat ff_amrwb_demuxer = {
+const AVInputFormat ff_amrwb_demuxer = {
     .name           = "amrwb",
     .long_name      = NULL_IF_CONFIG_SMALL("raw AMR-WB"),
     .priv_data_size = sizeof(AMRContext),
@@ -286,7 +283,7 @@ AVInputFormat ff_amrwb_demuxer = {
 #endif
 
 #if CONFIG_AMR_MUXER
-AVOutputFormat ff_amr_muxer = {
+const AVOutputFormat ff_amr_muxer = {
     .name              = "amr",
     .long_name         = NULL_IF_CONFIG_SMALL("3GPP AMR"),
     .mime_type         = "audio/amr",
@@ -294,7 +291,7 @@ AVOutputFormat ff_amr_muxer = {
     .audio_codec       = AV_CODEC_ID_AMR_NB,
     .video_codec       = AV_CODEC_ID_NONE,
     .write_header      = amr_write_header,
-    .write_packet      = amr_write_packet,
+    .write_packet      = ff_raw_write_packet,
     .flags             = AVFMT_NOTIMESTAMPS,
 };
 #endif

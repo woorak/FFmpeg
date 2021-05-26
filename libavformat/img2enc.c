@@ -78,7 +78,7 @@ static int write_muxed_file(AVFormatContext *s, AVIOContext *pb, AVPacket *pkt)
     VideoMuxData *img = s->priv_data;
     AVCodecParameters *par = s->streams[pkt->stream_index]->codecpar;
     AVStream *st;
-    AVPacket pkt2 = {0};
+    AVPacket pkt2;
     AVFormatContext *fmt = NULL;
     int ret;
 
@@ -88,8 +88,8 @@ static int write_muxed_file(AVFormatContext *s, AVIOContext *pb, AVPacket *pkt)
         return ret;
     st = avformat_new_stream(fmt, NULL);
     if (!st) {
-        avformat_free_context(fmt);
-        return AVERROR(ENOMEM);
+        ret = AVERROR(ENOMEM);
+        goto out;
     }
     st->id = pkt->stream_index;
 
@@ -105,8 +105,8 @@ static int write_muxed_file(AVFormatContext *s, AVIOContext *pb, AVPacket *pkt)
         (ret = av_interleaved_write_frame(fmt, &pkt2))         < 0 ||
         (ret = av_write_trailer(fmt))) {}
 
-out:
     av_packet_unref(&pkt2);
+out:
     avformat_free_context(fmt);
     return ret;
 }
@@ -257,10 +257,10 @@ static const AVClass img2mux_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_image2_muxer = {
+const AVOutputFormat ff_image2_muxer = {
     .name           = "image2",
     .long_name      = NULL_IF_CONFIG_SMALL("image2 sequence"),
-    .extensions     = "bmp,dpx,jls,jpeg,jpg,ljpg,pam,pbm,pcx,pgm,pgmyuv,png,"
+    .extensions     = "bmp,dpx,exr,jls,jpeg,jpg,ljpg,pam,pbm,pcx,pfm,pgm,pgmyuv,png,"
                       "ppm,sgi,tga,tif,tiff,jp2,j2c,j2k,xwd,sun,ras,rs,im1,im8,im24,"
                       "sunras,xbm,xface,pix,y",
     .priv_data_size = sizeof(VideoMuxData),
@@ -273,7 +273,7 @@ AVOutputFormat ff_image2_muxer = {
 };
 #endif
 #if CONFIG_IMAGE2PIPE_MUXER
-AVOutputFormat ff_image2pipe_muxer = {
+const AVOutputFormat ff_image2pipe_muxer = {
     .name           = "image2pipe",
     .long_name      = NULL_IF_CONFIG_SMALL("piped image2 sequence"),
     .priv_data_size = sizeof(VideoMuxData),

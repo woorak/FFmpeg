@@ -27,6 +27,7 @@
  * Known FOURCCs: 'ap4h' (444), 'apch' (HQ), 'apcn' (422), 'apcs' (LT), 'acpo' (Proxy)
  */
 
+#include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "dct.h"
@@ -49,15 +50,16 @@ static const AVProfile profiles[] = {
     { FF_PROFILE_UNKNOWN }
 };
 
-static const int qp_start_table[6] = {  8, 3, 2, 1, 1, 1};
-static const int qp_end_table[6]   = { 13, 9, 6, 6, 5, 4};
-static const int bitrate_table[6]  = { 1000, 2100, 3500, 5400, 7000, 10000};
+static const int qp_start_table[] = {  8, 3, 2, 1, 1, 1};
+static const int qp_end_table[]   = { 13, 9, 6, 6, 5, 4};
+static const int bitrate_table[]  = { 1000, 2100, 3500, 5400, 7000, 10000};
 
-static const int valid_primaries[9]  = { AVCOL_PRI_RESERVED0, AVCOL_PRI_BT709, AVCOL_PRI_UNSPECIFIED, AVCOL_PRI_BT470BG,
-                                         AVCOL_PRI_SMPTE170M, AVCOL_PRI_BT2020, AVCOL_PRI_SMPTE431, AVCOL_PRI_SMPTE432,INT_MAX };
-static const int valid_trc[4]        = { AVCOL_TRC_RESERVED0, AVCOL_TRC_BT709, AVCOL_TRC_UNSPECIFIED, INT_MAX };
-static const int valid_colorspace[5] = { AVCOL_SPC_BT709, AVCOL_SPC_UNSPECIFIED, AVCOL_SPC_SMPTE170M,
-                                         AVCOL_SPC_BT2020_NCL, INT_MAX };
+static const int valid_primaries[]  = { AVCOL_PRI_RESERVED0, AVCOL_PRI_BT709, AVCOL_PRI_UNSPECIFIED, AVCOL_PRI_BT470BG,
+                                        AVCOL_PRI_SMPTE170M, AVCOL_PRI_BT2020, AVCOL_PRI_SMPTE431, AVCOL_PRI_SMPTE432, INT_MAX };
+static const int valid_trc[]        = { AVCOL_TRC_RESERVED0, AVCOL_TRC_BT709, AVCOL_TRC_UNSPECIFIED, AVCOL_TRC_SMPTE2084,
+                                        AVCOL_TRC_ARIB_STD_B67, INT_MAX };
+static const int valid_colorspace[] = { AVCOL_SPC_BT709, AVCOL_SPC_UNSPECIFIED, AVCOL_SPC_SMPTE170M,
+                                        AVCOL_SPC_BT2020_NCL, INT_MAX };
 
 static const uint8_t QMAT_LUMA[6][64] = {
     {
@@ -458,7 +460,7 @@ static av_always_inline int encode_alpha_slice_data(AVCodecContext *avctx, int8_
     if (run)
         put_alpha_run(&pb, run);
     flush_put_bits(&pb);
-    *a_data_size = put_bits_count(&pb) >> 3;
+    *a_data_size = put_bytes_output(&pb);
 
     if (put_bits_left(&pb) < 0) {
         av_log(avctx, AV_LOG_ERROR,
@@ -942,7 +944,7 @@ static const AVClass prores_enc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_prores_aw_encoder = {
+const AVCodec ff_prores_aw_encoder = {
     .name           = "prores_aw",
     .long_name      = NULL_IF_CONFIG_SMALL("Apple ProRes"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -952,12 +954,13 @@ AVCodec ff_prores_aw_encoder = {
     .close          = prores_encode_close,
     .encode2        = prores_encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE},
-    .capabilities   = AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_INTRA_ONLY,
+    .capabilities   = AV_CODEC_CAP_FRAME_THREADS,
     .priv_class     = &proresaw_enc_class,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 
-AVCodec ff_prores_encoder = {
+const AVCodec ff_prores_encoder = {
     .name           = "prores",
     .long_name      = NULL_IF_CONFIG_SMALL("Apple ProRes"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -967,7 +970,8 @@ AVCodec ff_prores_encoder = {
     .close          = prores_encode_close,
     .encode2        = prores_encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE},
-    .capabilities   = AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_INTRA_ONLY,
+    .capabilities   = AV_CODEC_CAP_FRAME_THREADS,
     .priv_class     = &prores_enc_class,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

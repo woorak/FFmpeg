@@ -212,6 +212,7 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
     rubberband_set_time_ratio(s->rbs, 1. / s->tempo);
     rubberband_set_pitch_scale(s->rbs, s->pitch);
+    s->nb_samples = rubberband_get_samples_required(s->rbs);
 
     return 0;
 }
@@ -233,7 +234,7 @@ static const AVFilterPad rubberband_outputs[] = {
     { NULL }
 };
 
-AVFilter ff_af_rubberband = {
+const AVFilter ff_af_rubberband = {
     .name          = "rubberband",
     .description   = NULL_IF_CONFIG_SMALL("Apply time-stretching and pitch-shifting."),
     .query_formats = query_formats,
